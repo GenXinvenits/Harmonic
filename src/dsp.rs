@@ -179,7 +179,6 @@ impl Drop for NativeFilterHandle {
 
 struct FilterContext {
     shared: Arc<FilterShared>,
-    filter: *mut sys::pw_filter,
     in_left: *mut c_void,
     in_right: *mut c_void,
     out_left: *mut c_void,
@@ -282,7 +281,6 @@ fn run_filter(shared: Arc<FilterShared>, target: String) {
 
     let mut context = Box::new(FilterContext {
         shared: Arc::clone(&shared),
-        filter: ptr::null_mut(),
         in_left: ptr::null_mut(),
         in_right: ptr::null_mut(),
         out_left: ptr::null_mut(),
@@ -313,7 +311,6 @@ fn run_filter(shared: Arc<FilterShared>, target: String) {
         return;
     }
 
-    context.filter = filter;
 
     context.in_left = add_port(filter, sys::PW_DIRECTION_INPUT, "input_FL", "FL");
     context.in_right = add_port(filter, sys::PW_DIRECTION_INPUT, "input_FR", "FR");
