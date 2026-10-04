@@ -1,15 +1,17 @@
+mod eq;
 mod pipewire;
 
 use gtk4 as gtk;
 use gtk::prelude::*;
 use gtk::{glib, Align, Application, ApplicationWindow, Box as GtkBox, Button, Label, Orientation, Scale, Separator};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::mpsc;
 
 const APP_ID: &str = "io.github.GenXinvenits.Harmonic";
 
 fn main() -> glib::ExitCode {
     let app = Application::builder().application_id(APP_ID).build();
-
     app.connect_activate(build_ui);
     app.run()
 }
@@ -17,6 +19,7 @@ fn main() -> glib::ExitCode {
 fn build_ui(app: &Application) {
     let (tx, rx) = mpsc::channel();
     pipewire::spawn_discovery(tx);
+    let eq_state = Rc::new(RefCell::new(eq::EqState::default()));
 
     let window = ApplicationWindow::builder()
         .application(app)
@@ -53,12 +56,22 @@ fn build_ui(app: &Application) {
 
     let power = Button::with_label("Enabled");
     power.add_css_class("suggested-action");
+    {
+        let state = eq_state.clone();
+        let power_label = power.clone();
+        power.connect_clicked(move |_| {
+            let mut state = state.borrow_mut();
+            state.enabled = !state.enabled;
+            power_label.set_label(if state.enabled { "Enabled" } else { "Disabled" });
+            if state.enabled { power_label.add_css_class("suggested-action"); }
+            else { power_label.remove_css_class("suggested-action"); }
+        });
+    }
 
     header.append(&title_box);
     header.append(&status);
     header.append(&power);
     root.append(&header);
-
     root.append(&Separator::new(Orientation::Horizontal));
 
     let controls = GtkBox::new(Orientation::Horizontal, 12);
@@ -85,8 +98,21 @@ fn build_ui(app: &Application) {
     preamp_label.add_css_class("heading");
     let preamp_value = Label::new(Some("0.0 dB"));
     preamp_value.set_halign(Align::Start);
+    let preamp_slider = Scale::with_range(Orientation::Horizontal, -12.0, 12.0, 0.5);
+    preamp_slider.set_value(0.0);
+    preamp_slider.set_draw_value(false);
+    {
+        let state = eq_state.clone();
+        let value = preamp_value.clone();
+        preamp_slider.connect_value_changed(move |scale| {
+            let gain = scale.value() as f32;
+            state.borrow_mut().preamp_db = gain;
+            value.set_text(&format!("{gain:.1} dB"));
+        });
+    }
     preamp.append(&preamp_label);
     preamp.append(&preamp_value);
+    preamp.append(&preamp_slider);
 
     controls.append(&output);
     controls.append(&Separator::new(Orientation::Vertical));
@@ -107,16 +133,13 @@ fn build_ui(app: &Application) {
     graph.set_margin_bottom(8);
     graph.add_css_class("eq-surface");
 
-    let bands = [
-        "31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k",
-    ];
     let sliders = GtkBox::new(Orientation::Horizontal, 14);
     sliders.set_homogeneous(true);
     sliders.set_valign(Align::Center);
     sliders.set_margin_start(20);
     sliders.set_margin_end(20);
 
-    for band in bands {
+    for (index, band) in eq::BAND_FREQUENCIES.iter().enumerate() {
         let column = GtkBox::new(Orientation::Vertical, 8);
         column.set_valign(Align::Fill);
 
@@ -128,16 +151,18 @@ fn build_ui(app: &Application) {
         slider.set_vexpand(true);
         slider.set_draw_value(false);
         slider.set_inverted(true);
-        slider.set_tooltip_text(Some(&format!("{band} Hz")));
+        slider.set_tooltip_text(Some(&format!("{band:.0} Hz")));
 
+        let state = eq_state.clone();
         let value_clone = value.clone();
         slider.connect_value_changed(move |scale| {
-            value_clone.set_text(&format!("{:.1}", scale.value()));
+            let gain = scale.value() as f32;
+            state.borrow_mut().set_band_gain(index, gain);
+            value_clone.set_text(&format!("{gain:.1}"));
         });
 
-        let frequency = Label::new(Some(band));
+        let frequency = Label::new(Some(&format_frequency(*band)));
         frequency.add_css_class("caption");
-
         column.append(&value);
         column.append(&slider);
         column.append(&frequency);
@@ -149,7 +174,7 @@ fn build_ui(app: &Application) {
 
     let footer = GtkBox::new(Orientation::Horizontal, 8);
     footer.set_margin_top(10);
-    let info = Label::new(Some("PipeWire backend • Filter-chain DSP engine coming next"));
+    let info = Label::new(Some("PipeWire backend • EQ model connected • live DSP controller next"));
     info.add_css_class("dim-label");
     info.set_halign(Align::Start);
     footer.append(&info);
@@ -182,4 +207,15 @@ fn build_ui(app: &Application) {
 
     window.set_child(Some(&root));
     window.present();
+}
+
+fn format_frequency(frequency: f32) -> String {
+    match frequency as u32 {
+        1_000 => "1k".into(),
+        2_000 => "2k".into(),
+        4_000 => "4k".into(),
+        8_000 => "8k".into(),
+        16_000 => "16k".into(),
+        value => value.to_string(),
+    }
 }
