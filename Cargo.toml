@@ -1,0 +1,13 @@
+[package]
+name = "harmonic"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Native audio DSP and equalizer for Linux using PipeWire"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/GenXinvenits/Harmonic"
+readme = "README.md"
+
+[dependencies]
+gtk4 = { version = "0.11.5", package = "gtk4", features = ["v4_18"] }
+pipewire = "0.10.1"
