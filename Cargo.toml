@@ -2,7 +2,7 @@
 name = "harmonic"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.83"
+rust-version = "1.85"
 description = "Native audio DSP and equalizer for Linux using PipeWire"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/GenXinvenits/Harmonic"
