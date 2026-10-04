@@ -1,5 +1,4 @@
 use crate::eq::EqState;
-use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
@@ -20,8 +19,6 @@ impl DspController {
             let mut runtime = DspRuntime::new();
 
             while let Ok(mut state) = rx.recv() {
-                // Coalesce rapid slider movements so the graph is not rebuilt for
-                // every single GTK adjustment event.
                 while let Ok(next) = rx.recv_timeout(Duration::from_millis(120)) {
                     state = next;
                 }
@@ -87,7 +84,6 @@ impl DspRuntime {
 
         self.child = Some(child);
 
-        // Give the filter client a moment to publish its sink before selecting it.
         thread::sleep(Duration::from_millis(180));
 
         let status = Command::new("wpctl")
@@ -155,9 +151,6 @@ fn write_runtime_config(config: &str) -> Result<std::path::PathBuf, String> {
 fn render_filter_config(state: &EqState, target: &str) -> String {
     let mut config = state.filter_chain_config();
 
-    // The EQ graph is wrapped in a client-side filter-chain process. The
-    // capture side is a selectable virtual sink; the playback side is pinned
-    // to the physical sink that was active when Harmonic was enabled.
     let preamp = state.preamp_db;
 
     if preamp.abs() > f32::EPSILON {
