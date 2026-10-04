@@ -39,13 +39,23 @@ impl EqState {
         }
     }
 
+    /// Generate a PipeWire builtin parametric-EQ graph from the current model.
     pub fn filter_chain_config(&self) -> String {
-        let mut config = String::from("filter.graph = {\n    nodes = [\n");
-        for (index, band) in self.bands.iter().enumerate() {
-            if !band.enabled || !self.enabled { continue; }
-            let _ = writeln!(config, "        {{ type = builtin name = eq{index} label = bq_peaking control = {{ Freq = {} Gain = {} Q = 1.000 }} }},", band.frequency, band.gain_db);
+        let mut config = String::from("filter.graph = {\n    nodes = [\n        {\n            type = builtin\n            name = harmonic_eq\n            label = param_eq\n            config = {\n                filters = [\n");
+
+        if self.enabled {
+            for band in &self.bands {
+                if band.enabled && band.gain_db.abs() > f32::EPSILON {
+                    let _ = writeln!(
+                        config,
+                        "                    {{ type = bq_peaking freq = {:.1} gain = {:.2} q = 1.000 }},",
+                        band.frequency, band.gain_db
+                    );
+                }
+            }
         }
-        config.push_str("    ]\n}\n");
+
+        config.push_str("                ]\n            }\n        }\n    ]\n}\n");
         config
     }
 }
@@ -64,5 +74,14 @@ mod tests {
         let mut eq = EqState::default();
         eq.set_band_gain(0, 50.0);
         assert_eq!(eq.bands[0].gain_db, 12.0);
+    }
+
+    #[test]
+    fn config_contains_parametric_eq() {
+        let mut eq = EqState::default();
+        eq.set_band_gain(0, 3.0);
+        let config = eq.filter_chain_config();
+        assert!(config.contains("label = param_eq"));
+        assert!(config.contains("freq = 31.0 gain = 3.00"));
     }
 }
