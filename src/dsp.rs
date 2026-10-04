@@ -366,7 +366,7 @@ fn run_filter(shared: Arc<FilterShared>, target: String) {
 fn properties_for_filter(target: &str) -> Result<*mut sys::pw_properties, String> {
     let target = target.replace('\\', "\\\\").replace(' ', "\\ ");
     let description = format!(
-        "media.type=Audio media.category=Sink media.role=DSP media.class=Audio/Sink          node.name={FILTER_SINK} node.description=\"{FILTER_NODE}\"          node.virtual=true node.autoconnect=true target.object={target}          node.rate=1/48000"
+        "media.type=Audio media.category=Sink media.role=DSP media.class=Audio/Sink          node.name={FILTER_SINK} node.description=\"{FILTER_NODE}\"          node.virtual=true node.autoconnect=true target.object={target}          audio.rate=48000"
     );
 
     let value = CString::new(description)
@@ -381,7 +381,7 @@ fn properties_for_filter(target: &str) -> Result<*mut sys::pw_properties, String
 }
 
 #[repr(C)]
-struct PortMarker;
+struct PortMarker(u8);
 
 fn add_port(
     filter: *mut sys::pw_filter,
