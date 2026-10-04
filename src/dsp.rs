@@ -88,7 +88,7 @@ impl FilterShared {
         Self {
             enabled: AtomicBool::new(true),
             preamp: AtomicU32::new(1.0f32.to_bits()),
-            bands: std::array::from_fn(|_| AtomicCoefficients::new(Coefficients::default())),
+            bands: std::array::from_fn(|_| AtomicCoefficients::new(identity_coefficients())),
             loop_ptr: AtomicPtr::new(ptr::null_mut()),
             ready: AtomicBool::new(false),
             failed: AtomicBool::new(false),
@@ -106,7 +106,7 @@ impl FilterShared {
             self.bands[index].store(if band.enabled {
                 peaking_coefficients(band.frequency, band.gain_db, SAMPLE_RATE, Q)
             } else {
-                Coefficients::default()
+                identity_coefficients()
             });
         }
     }
@@ -225,7 +225,7 @@ unsafe extern "C" fn on_process(
     let enabled = context.shared.enabled.load(Ordering::Relaxed);
     let preamp = f32::from_bits(context.shared.preamp.load(Ordering::Relaxed));
 
-    let mut coefficients = [Coefficients::default(); 31];
+    let mut coefficients = [identity_coefficients(); 31];
     for (index, destination) in coefficients.iter_mut().enumerate() {
         *destination = context.shared.bands[index].load();
     }
@@ -277,7 +277,7 @@ fn run_filter(shared: Arc<FilterShared>, target: String) {
     };
 
     let mut events: sys::pw_filter_events = unsafe { std::mem::zeroed() };
-    events.version = sys::PW_VERSION_FILTER_EVENTS;
+    events.version = 1;
     events.process = Some(on_process);
 
     let mut context = Box::new(FilterContext {
@@ -380,6 +380,9 @@ fn properties_for_filter(target: &str) -> Result<*mut sys::pw_properties, String
     }
 }
 
+#[repr(C)]
+struct PortMarker;
+
 fn add_port(
     filter: *mut sys::pw_filter,
     direction: sys::pw_direction,
@@ -387,7 +390,7 @@ fn add_port(
     position: &str,
 ) -> *mut c_void {
     let properties = format!(
-        "format.dsp=32\\ bit\\ float\\ mono\\ audio port.name={name} audio.position={position}"
+        "format.dsp=32\\ bit\\ float\\ mono\\ audio port.name={name} audio.channel={position}"
     );
     let properties = match CString::new(properties) {
         Ok(value) => value,
@@ -404,11 +407,18 @@ fn add_port(
             filter,
             direction,
             sys::pw_filter_port_flags_PW_FILTER_PORT_FLAG_MAP_BUFFERS as _,
-            0,
+            std::mem::size_of::<PortMarker>(),
             props,
             ptr::null(),
             0,
         )
+    }
+}
+
+fn identity_coefficients() -> Coefficients {
+    Coefficients {
+        b0: 1.0,
+        ..Coefficients::default()
     }
 }
 
@@ -582,11 +592,12 @@ mod tests {
     fn positive_gain_increases_center_frequency_response() {
         let c = peaking_coefficients(1_000.0, 6.0, SAMPLE_RATE, Q);
         let w = 2.0 * std::f32::consts::PI * 1_000.0 / SAMPLE_RATE;
-        let z1 = (w.cos(), -w.sin());
-        let num = c.b0 + c.b1 * z1.0 + c.b2 * (2.0 * w).cos();
-        let den = 1.0 + c.a1 * z1.0 + c.a2 * (2.0 * w).cos();
-        let magnitude = (num / den).abs();
-        assert!(magnitude > 1.5);
+        let real_num = c.b0 + c.b1 * w.cos() + c.b2 * (2.0 * w).cos();
+        let imag_num = -c.b1 * w.sin() - c.b2 * (2.0 * w).sin();
+        let real_den = 1.0 + c.a1 * w.cos() + c.a2 * (2.0 * w).cos();
+        let imag_den = -c.a1 * w.sin() - c.a2 * (2.0 * w).sin();
+        let magnitude = real_num.hypot(imag_num) / real_den.hypot(imag_den);
+        assert!(magnitude > 1.9);
     }
 
     #[test]
