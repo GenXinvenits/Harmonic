@@ -187,7 +187,7 @@ fn build_ui(app: &Application) {
         slider.set_vexpand(true);
         slider.set_draw_value(false);
         slider.set_inverted(true);
-        slider.set_tooltip_text(Some(&format!("{band:g} Hz")));
+        slider.set_tooltip_text(Some(&format!("{band:.1} Hz")));
 
         let state = eq_state.clone();
         let dsp = dsp.clone();
